@@ -7,7 +7,6 @@ use nom::error::{Error, ErrorKind};
 use nom::multi::many0;
 use nom::sequence::{terminated, tuple};
 use nom::{AsChar, Err, IResult};
-use std::borrow::Cow;
 use unicode_categories::UnicodeCategories;
 
 pub(crate) fn tokenize(mut input: &str, named_placeholders: bool) -> Vec<Token<'_>> {
@@ -36,8 +35,6 @@ pub(crate) fn tokenize(mut input: &str, named_placeholders: bool) -> Vec<Token<'
 pub(crate) struct Token<'a> {
     pub kind: TokenKind,
     pub value: &'a str,
-    // Only used for placeholder--there is a reason this isn't on the enum
-    pub key: Option<PlaceholderKind<'a>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,30 +53,6 @@ pub(crate) enum TokenKind {
     Number,
     Placeholder,
     Word,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum PlaceholderKind<'a> {
-    Named(Cow<'a, str>),
-    ZeroIndexed(usize),
-    OneIndexed(usize),
-}
-
-impl<'a> PlaceholderKind<'a> {
-    pub fn named(&'a self) -> &'a str {
-        match self {
-            PlaceholderKind::Named(val) => val.as_ref(),
-            _ => "",
-        }
-    }
-
-    pub fn indexed(&self) -> Option<usize> {
-        match self {
-            PlaceholderKind::ZeroIndexed(val) => Some(*val),
-            PlaceholderKind::OneIndexed(val) => Some(*val - 1),
-            _ => None,
-        }
-    }
 }
 
 fn get_next_token<'a>(
@@ -107,7 +80,6 @@ fn get_whitespace_token(input: &str) -> IResult<&str, Token<'_>> {
             Token {
                 kind: TokenKind::Whitespace,
                 value: token,
-                key: None,
             },
         )
     })
@@ -124,7 +96,6 @@ fn get_line_comment_token(input: &str) -> IResult<&str, Token<'_>> {
             Token {
                 kind: TokenKind::LineComment,
                 value: token,
-                key: None,
             },
         )
     })
@@ -142,7 +113,6 @@ fn get_block_comment_token(input: &str) -> IResult<&str, Token<'_>> {
             Token {
                 kind: TokenKind::BlockComment,
                 value: token,
-                key: None,
             },
         )
     })
@@ -219,7 +189,6 @@ fn get_string_token(input: &str) -> IResult<&str, Token<'_>> {
             Token {
                 kind: TokenKind::String,
                 value: token,
-                key: None,
             },
         )
     })
@@ -260,7 +229,6 @@ fn get_placeholder_string_token(input: &str) -> IResult<&str, Token<'_>> {
             Token {
                 kind: TokenKind::String,
                 value: token,
-                key: None,
             },
         )
     })
@@ -273,7 +241,6 @@ fn get_open_paren_token(input: &str) -> IResult<&str, Token<'_>> {
             Token {
                 kind: TokenKind::OpenParen,
                 value: token,
-                key: None,
             },
         )
     })
@@ -286,7 +253,6 @@ fn get_close_paren_token(input: &str) -> IResult<&str, Token<'_>> {
             Token {
                 kind: TokenKind::CloseParen,
                 value: token,
-                key: None,
             },
         )
     })
@@ -322,19 +288,6 @@ fn get_indexed_placeholder_token(input: &str) -> IResult<&str, Token<'_>> {
             Token {
                 kind: TokenKind::Placeholder,
                 value: token,
-                key: if token.len() > 1 {
-                    if let Ok(index) = token[1..].parse::<usize>() {
-                        Some(if token.starts_with('$') {
-                            PlaceholderKind::OneIndexed(index)
-                        } else {
-                            PlaceholderKind::ZeroIndexed(index)
-                        })
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                },
             },
         )
     })
@@ -348,13 +301,11 @@ fn get_ident_named_placeholder_token(input: &str) -> IResult<&str, Token<'_>> {
         }),
     )))(input)
     .map(|(input, token)| {
-        let index = Cow::Borrowed(&token[1..]);
         (
             input,
             Token {
                 kind: TokenKind::Placeholder,
                 value: token,
-                key: Some(PlaceholderKind::Named(index)),
             },
         )
     })
@@ -366,21 +317,14 @@ fn get_string_named_placeholder_token(input: &str) -> IResult<&str, Token<'_>> {
         get_placeholder_string_token,
     )))(input)
     .map(|(input, token)| {
-        let index =
-            get_escaped_placeholder_key(&token[2..token.len() - 1], &token[token.len() - 1..]);
         (
             input,
             Token {
                 kind: TokenKind::Placeholder,
                 value: token,
-                key: Some(PlaceholderKind::Named(index)),
             },
         )
     })
-}
-
-fn get_escaped_placeholder_key<'a>(key: &'a str, quote_char: &str) -> Cow<'a, str> {
-    Cow::Owned(key.replace(&format!("\\{}", quote_char), quote_char))
 }
 
 fn get_number_token(input: &str) -> IResult<&str, Token<'_>> {
@@ -394,7 +338,6 @@ fn get_number_token(input: &str) -> IResult<&str, Token<'_>> {
             Token {
                 kind: TokenKind::Number,
                 value: token,
-                key: None,
             },
         )
     })
@@ -482,7 +425,6 @@ fn get_top_level_reserved_token(input: &str) -> IResult<&str, Token<'_>> {
             Token {
                 kind: TokenKind::ReservedTopLevel,
                 value: token,
-                key: None,
             },
         ))
     } else {
@@ -526,14 +468,7 @@ fn get_newline_reserved_token<'a>(
             } else {
                 TokenKind::ReservedNewline
             };
-            Ok((
-                input,
-                Token {
-                    kind,
-                    value: token,
-                    key: None,
-                },
-            ))
+            Ok((input, Token { kind, value: token }))
         } else {
             Err(Err::Error(Error::new(input, ErrorKind::Alt)))
         }
@@ -561,7 +496,6 @@ fn get_top_level_reserved_token_no_indent(input: &str) -> IResult<&str, Token<'_
             Token {
                 kind: TokenKind::ReservedTopLevelNoIndent,
                 value: token,
-                key: None,
             },
         ))
     } else {
@@ -920,7 +854,6 @@ fn get_plain_reserved_token(input: &str) -> IResult<&str, Token<'_>> {
             Token {
                 kind: TokenKind::Reserved,
                 value: token,
-                key: None,
             },
         ))
     } else {
@@ -935,7 +868,6 @@ fn get_word_token(input: &str) -> IResult<&str, Token<'_>> {
             Token {
                 kind: TokenKind::Word,
                 value: token,
-                key: None,
             },
         )
     })
@@ -972,7 +904,6 @@ fn get_operator_token(input: &str) -> IResult<&str, Token<'_>> {
             Token {
                 kind: TokenKind::Operator,
                 value: token,
-                key: None,
             },
         )
     })

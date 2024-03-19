@@ -5,8 +5,7 @@ pub(crate) fn format(tokens: &[Token<'_>]) -> String {
     for token in tokens {
         if token.kind == TokenKind::Whitespace {
             formatted_query += " ";
-        }
-        else {
+        } else {
             formatted_query += token.value;
         }
     }

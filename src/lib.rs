@@ -8,9 +8,6 @@
 #![allow(clippy::manual_strip)]
 
 mod formatter;
-mod indentation;
-mod inline_block;
-mod params;
 mod tokenizer;
 
 pub fn format(query: &str, params: &QueryParams) -> String {
