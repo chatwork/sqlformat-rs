@@ -75,11 +75,16 @@ mod tests {
                 count(*),
                 Column1
             FROM
-                Table1
+                Table1 AS t1
+            LEFT JOIN
+                Table2 AS t2
+            ON
+                t2.hoge = t1.fuga
             WHERE
                 id = 'hogehoge'
         ";
-        let expected = indoc!("SELECT count(*), Column1 FROM Table1 WHERE id = 'hogehoge'");
+        let expected =
+            indoc!("SELECT count(*), Column1 FROM Table1 AS t1 LEFT JOIN Table2 AS t2 ON t2.hoge = t1.fuga WHERE id = 'hogehoge'");
 
         assert_eq!(format(input, &QueryParams::None), expected);
     }
